@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SG Mockup Maker V12</title>
+<style>
+:root{--bg:#0d0f0e;--panel:#171a18;--line:#303631;--text:#f6f7f6;--muted:#aeb6b0;--green:#39d16f}
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,sans-serif}
+header{padding:18px 22px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+h1{font-size:20px;margin:0}.tag{color:var(--green);font-weight:700}
+main{display:grid;grid-template-columns:320px 1fr;min-height:calc(100vh - 62px)}
+aside{padding:18px;border-right:1px solid var(--line);background:var(--panel)}
+label{display:block;margin:14px 0 6px;color:var(--muted);font-size:13px}
+input[type=file],select,button{width:100%;padding:11px;border-radius:8px;border:1px solid var(--line);background:#101310;color:white}
+input[type=range]{width:100%} button{cursor:pointer;font-weight:700;margin-top:10px}
+button.primary{background:var(--green);color:#07120b;border:0}
+button:disabled{opacity:.45;cursor:not-allowed}
+small{color:var(--muted);line-height:1.4;display:block;margin-top:12px}
+.stage{padding:18px;overflow:auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.card{background:#fff;border-radius:12px;overflow:hidden;color:#111;box-shadow:0 4px 20px #0004}
+.card h3{margin:0;padding:10px 12px;background:#eef1ef;font-size:14px;text-transform:capitalize}
+.canvasWrap{position:relative;aspect-ratio:1/1;background:white}
+canvas{width:100%;height:100%;display:block;touch-action:pan-y}
+.actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:10px}.actions button{margin:0;color:#111;background:#fff;border:1px solid #bbb}
+.actions button.locked{background:#171a18;color:#fff;border-color:#171a18}
+.status{font-size:12px;padding:0 10px 8px;color:#66706a}
+.value{float:right;color:white}
+@media(max-width:760px){main{grid-template-columns:1fr}aside{border-right:0;border-bottom:1px solid var(--line)}}
+</style>
+<link rel="icon" href="assets/kung-fu-shirt-icon.png"><link rel="apple-touch-icon" href="assets/kung-fu-shirt-icon.png"><meta name="theme-color" content="#0d0f0e"><link rel="manifest" href="manifest.webmanifest"></head>
+<body>
+<header><img src="assets/kung-fu-shirt-icon.png" alt="Mockup Maker Kung Fu" style="width:58px;height:58px;border-radius:12px;object-fit:cover;margin-right:12px"><h1><span class="tag">SG</span> Mockup Maker V5 Touch</h1><div>Upload → Position → Download</div></header>
+<main>
+<aside>
+  <label>1. Upload artwork — PNG, JPG, or WebP</label>
+  <input id="upload" type="file" accept="image/png,image/webp,image/jpeg">
+
+  <label style="display:flex;gap:10px;align-items:center;margin-top:18px">
+    <input id="removeBg" type="checkbox" style="width:auto">
+    Remove background
+  </label>
+  <label>Background remover mode</label>
+  <select id="bgMode">
+    <option value="edge">Auto edge color</option>
+    <option value="white">White / near-white</option>
+    <option value="black">Black / near-black</option>
+  </select>
+  <label>Background tolerance <span class="value" id="tolVal">28</span></label>
+  <input id="tolerance" type="range" min="5" max="100" value="28">
+
+  <button id="resetAll">Reset all garments</button>
+  <button class="primary" id="downloadAll" disabled>Download all 6 PNGs</button>
+  <small>
+    Default: background stays exactly as uploaded. Turn on Remove background only when you want it. Choose Auto edge color, White, or Black and adjust tolerance if a border remains.
+    On each garment, tap the artwork to edit it, drag it into position, and use the green corner handle to resize it. Then tap Lock. Locked artwork cannot move and the green outline disappears. Swipe outside unlocked artwork—or anywhere on a locked garment—to scroll. Each garment is independent. Downloads are automatically cropped and re-centered around the garment so there is no loose canvas space for the mockup to appear to slide.
+  </small>
+</aside>
+<section class="stage"><div id="grid" class="grid"></div></section>
+</main>
+
+<script>
+const garments = {
+ tshirt:{img:"assets/tshirt.jpg",box:[.50,.255,.36,.40]},
+ crewneck:{img:"assets/crewneck.jpg",box:[.50,.285,.34,.35]},
+ hoodie:{img:"assets/hoodie.jpg",box:[.50,.245,.38,.34]},
+ longsleeve:{img:"assets/longsleeve.jpg",box:[.50,.225,.40,.46]},
+ onesie:{img:"assets/onesie.jpg",box:[.50,.285,.30,.30]},
+ beanie:{img:"assets/beanie.jpg",box:[.50,.640,.28,.12]}
+};
+const exportCrop = {
+ tshirt:    [.13,.035,.87,.965],
+ crewneck:  [.10,.035,.90,.965],
+ hoodie:    [.08,.025,.92,.975],
+ longsleeve:[.06,.025,.94,.975],
+ onesie:    [.18,.025,.82,.975],
+ beanie:    [.16,.10,.84,.90]
+};
+
+let originalArt=null, art=null, artName="design", masters={};
+const state={};
+const grid=document.getElementById("grid");
+
+for(const [name,g] of Object.entries(garments)){
+ state[name]={x:null,y:null,w:null,h:null,selected:false,locked:false};
+ const card=document.createElement("div"); card.className="card";
+ card.innerHTML=`<h3>${name}</h3>
+ <div class="canvasWrap"><canvas id="c-${name}" width="2000" height="2000" ></canvas></div>
+ <div class="actions">
+   <button data-lock="${name}">🔓 Lock</button>
+   <button data-reset="${name}">Reset</button>
+   <button data-dl="${name}">Download</button>
+   <button data-share="${name}" style="grid-column:1 / -1">Share / Facebook</button>
+ </div>
+ <div class="status" id="status-${name}">Unlocked — tap artwork to edit; swipe outside artwork to scroll.</div>`;
+ grid.appendChild(card);
+ const im=new Image(); im.src=g.img; im.onload=()=>{masters[name]=im; draw(name)};
+ const c=card.querySelector("canvas");
+ attachTouch(c,name);
+}
+
+function makeArtSource(img){
+ const c=document.createElement("canvas");c.width=img.naturalWidth||img.width;c.height=img.naturalHeight||img.height;
+ c.getContext("2d").drawImage(img,0,0);return c;
+}
+function removeEdgeBackground(source,tol){
+ const c=document.createElement("canvas");c.width=source.width;c.height=source.height;
+ const ctx=c.getContext("2d");ctx.drawImage(source,0,0);
+ const id=ctx.getImageData(0,0,c.width,c.height),p=id.data,w=c.width,h=c.height;
+ const corners=[[0,0],[w-1,0],[0,h-1],[w-1,h-1]].map(([x,y])=>{let i=(y*w+x)*4;return[p[i],p[i+1],p[i+2]]});
+ const mode=document.getElementById("bgMode")?.value||"edge";
+ const bg=mode==="white"?[255,255,255]:mode==="black"?[0,0,0]:
+   [0,1,2].map(k=>Math.round(corners.reduce((s,v)=>s+v[k],0)/4));
+ const seen=new Uint8Array(w*h),q=[];
+ for(let x=0;x<w;x++){q.push([x,0],[x,h-1])} for(let y=0;y<h;y++){q.push([0,y],[w-1,y])}
+ let qi=0;
+ while(qi<q.length){
+  const [x,y]=q[qi++],idx=y*w+x;if(seen[idx])continue;seen[idx]=1;
+  const i=idx*4;if(Math.max(Math.abs(p[i]-bg[0]),Math.abs(p[i+1]-bg[1]),Math.abs(p[i+2]-bg[2]))>tol)continue;
+  p[i+3]=0;
+  if(x)q.push([x-1,y]);if(x<w-1)q.push([x+1,y]);if(y)q.push([x,y-1]);if(y<h-1)q.push([x,y+1]);
+ }
+ ctx.putImageData(id,0,0);return c;
+}
+function rebuildArt(){
+ if(!originalArt)return;
+ art=document.getElementById("removeBg").checked ?
+   removeEdgeBackground(originalArt,+document.getElementById("tolerance").value) : originalArt;
+ redraw();
+}
+function initialRect(name,mw,mh,mx,my){
+ const [cx,ty,bw,bh]=garments[name].box, as=art.width/art.height;
+ let maxW=bw*mw,maxH=bh*mh,w=maxW,h=w/as;if(h>maxH){h=maxH;w=h*as}
+ return {x:mx+cx*mw-w/2,y:my+ty*mh,w,h};
+}
+function draw(name){
+ const m=masters[name],c=document.getElementById("c-"+name);if(!m||!c)return;
+ const ctx=c.getContext("2d");ctx.clearRect(0,0,2000,2000);ctx.fillStyle="white";ctx.fillRect(0,0,2000,2000);
+ const s=Math.min(1900/m.width,1900/m.height),mw=m.width*s,mh=m.height*s,mx=(2000-mw)/2,my=(2000-mh)/2;ctx.drawImage(m,mx,my,mw,mh);
+ if(!art)return;
+ let st=state[name];if(st.x===null)Object.assign(st,initialRect(name,mw,mh,mx,my));
+ ctx.drawImage(art,st.x,st.y,st.w,st.h);
+ if(st.selected && !st.locked){
+  ctx.save();ctx.strokeStyle="#20a85a";ctx.lineWidth=7;ctx.setLineDash([18,12]);ctx.strokeRect(st.x,st.y,st.w,st.h);ctx.setLineDash([]);
+  ctx.fillStyle="#20a85a";ctx.beginPath();ctx.arc(st.x+st.w,st.y+st.h,24,0,Math.PI*2);ctx.fill();ctx.restore();
+ }
+}
+function redraw(){Object.keys(garments).forEach(draw)}
+function canvasPoint(c,e){
+ const r=c.getBoundingClientRect(),t=e.touches?e.touches[0]:e;
+ return {x:(t.clientX-r.left)*c.width/r.width,y:(t.clientY-r.top)*c.height/r.height};
+}
+function attachTouch(c,name){
+ let mode=null,start=null,base=null,activePointer=false;
+ const begin=e=>{
+  if(!art)return;
+  const st=state[name]; if(st.locked){ mode=null; return; }
+  const p=canvasPoint(c,e),hx=st.x+st.w,hy=st.y+st.h;
+  if(Math.hypot(p.x-hx,p.y-hy)<90) mode="resize";
+  else if(p.x>=st.x&&p.x<=st.x+st.w&&p.y>=st.y&&p.y<=st.y+st.h) mode="move";
+  else { mode=null; st.selected=false; draw(name); return; }
+  activePointer=true;
+  Object.keys(state).forEach(k=>state[k].selected=(k===name));
+  start=p;base={...st};draw(name);e.preventDefault();
+ };
+ const move=e=>{
+  if(!mode||!activePointer)return;
+  const p=canvasPoint(c,e),st=state[name],dx=p.x-start.x,dy=p.y-start.y;
+  if(mode==="move"){st.x=base.x+dx;st.y=base.y+dy}
+  else{
+   const as=base.w/base.h;let nw=Math.max(80,base.w+dx),nh=nw/as;
+   if(Math.abs(dy)>Math.abs(dx)){nh=Math.max(80,base.h+dy);nw=nh*as}
+   st.w=nw;st.h=nh;
+  }
+  draw(name);e.preventDefault();
+ };
+ const end=()=>{mode=null;activePointer=false};
+ c.addEventListener("touchstart",begin,{passive:false});
+ c.addEventListener("touchmove",move,{passive:false});
+ c.addEventListener("touchend",end,{passive:true});
+ c.addEventListener("touchcancel",end,{passive:true});
+ c.addEventListener("mousedown",begin);
+ window.addEventListener("mousemove",move);
+ window.addEventListener("mouseup",end);
+}
+function updateLockUI(name){
+ const st=state[name],btn=document.querySelector(`[data-lock="${name}"]`),status=document.getElementById("status-"+name);
+ if(!btn)return;
+ btn.textContent=st.locked?"🔒 Locked":"🔓 Lock";
+ btn.classList.toggle("locked",st.locked);
+ status.textContent=st.locked?"Locked — position/size protected. Swipe anywhere to scroll.":"Unlocked — tap artwork to edit; swipe outside artwork to scroll.";
+}
+document.getElementById("upload").onchange=e=>{
+ const f=e.target.files[0];if(!f)return;artName=f.name.replace(/\.[^.]+$/,"");
+ const im=new Image();im.onload=()=>{
+   originalArt=makeArtSource(im);art=originalArt;
+   Object.keys(state).forEach(k=>state[k]={x:null,y:null,w:null,h:null,selected:false,locked:false});
+   rebuildArt();document.getElementById("downloadAll").disabled=false
+ };im.src=URL.createObjectURL(f);
+};
+document.getElementById("removeBg").onchange=rebuildArt;
+document.getElementById("bgMode").onchange=()=>{if(removeBg.checked)rebuildArt()};
+document.getElementById("tolerance").oninput=e=>{tolVal.textContent=e.target.value;if(removeBg.checked)rebuildArt()};
+document.getElementById("resetAll").onclick=()=>{Object.keys(state).forEach(k=>state[k]={x:null,y:null,w:null,h:null,selected:false,locked:false});Object.keys(state).forEach(updateLockUI);redraw()};
+function cleanDraw(name){
+ const was=state[name].selected;state[name].selected=false;draw(name);state[name].selected=was;
+}
+function exportCanvas(name){
+ cleanDraw(name);
+ const src=document.getElementById("c-"+name),b=exportCrop[name]||[0,0,1,1];
+ const sx=Math.round(b[0]*src.width),sy=Math.round(b[1]*src.height),
+       sw=Math.round((b[2]-b[0])*src.width),sh=Math.round((b[3]-b[1])*src.height);
+ const out=document.createElement("canvas");
+ // Keep Shopify-ready square output, but crop the garment view first so there is no loose slide space.
+ out.width=2000;out.height=2000;
+ const ctx=out.getContext("2d");ctx.fillStyle="white";ctx.fillRect(0,0,2000,2000);
+ const scale=Math.min(1960/sw,1960/sh),dw=sw*scale,dh=sh*scale;
+ ctx.drawImage(src,sx,sy,sw,sh,(2000-dw)/2,(2000-dh)/2,dw,dh);
+ draw(name);
+ return out;
+}
+function saveCanvas(name){
+ const c=exportCanvas(name);
+ c.toBlob(b=>{const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=`${artName}-${name}.png`;a.click()},"image/png");
+}
+async function shareCanvas(name){
+ const c=exportCanvas(name);
+ const blob=await new Promise(r=>c.toBlob(r,"image/png"));
+ const file=new File([blob],`${artName}-${name}.png`,{type:"image/png"});
+ if(navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))){
+  try{await navigator.share({title:`${artName} — ${name}`,text:"Seymore Green mockup",files:[file]});return}
+  catch(err){if(err && err.name==="AbortError")return}
+ }
+ const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=file.name;a.click();
+ alert("Direct sharing is not supported here. The PNG was downloaded so you can attach it to Facebook.");
+}
+
+document.addEventListener("click",e=>{
+ if(e.target.dataset.lock){
+   const name=e.target.dataset.lock,st=state[name];
+   st.locked=!st.locked;st.selected=false;updateLockUI(name);draw(name);
+ }
+ if(e.target.dataset.dl)saveCanvas(e.target.dataset.dl);
+ if(e.target.dataset.share)shareCanvas(e.target.dataset.share);
+ if(e.target.dataset.reset){state[e.target.dataset.reset]={x:null,y:null,w:null,h:null,selected:false,locked:false};updateLockUI(e.target.dataset.reset);draw(e.target.dataset.reset)}
+});
+document.getElementById("downloadAll").onclick=async()=>{
+ for(const name of Object.keys(garments)){
+  const c=exportCanvas(name),blob=await new Promise(r=>c.toBlob(r,"image/png"));
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=`${artName}-${name}.png`;document.body.appendChild(a);a.click();a.remove();draw(name);
+  await new Promise(r=>setTimeout(r,300));
+ }
+};
+</script>
+<script>
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}
+</script>
+</body></html>
