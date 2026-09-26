@@ -1,0 +1,11 @@
+SG MOCKUP MAKER — NETLIFY PWA
+
+1. Unzip this package.
+2. In Netlify, use Deploy manually / drag-and-drop.
+3. Drag the SG_Mockup_Maker_Netlify_PWA folder (or all of its contents) into Netlify.
+4. index.html must be at the published site root.
+5. After deploy, open the HTTPS Netlify URL once while online.
+6. On Android/Chrome use Add to Home screen / Install app.
+7. The Kung Fu man holding the shirt is the favicon/PWA icon.
+
+Do not upload index.html alone. Keep the assets folder, manifest.webmanifest, sw.js, _redirects and netlify.toml with it.
