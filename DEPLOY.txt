@@ -1,0 +1,5 @@
+NETLIFY V14 FIXED
+Upload ALL 7 items in this folder together.
+The six garment images are embedded directly inside index.html, so they cannot disappear because of a missing assets folder.
+The only separate image is icon.png, used for the installable PWA icon.
+After deploying, if an older version appears, refresh the site once or close/reopen it so the old service-worker cache is replaced.

@@ -1,0 +1,20 @@
+{
+  "name": "SG Mockup Maker",
+  "short_name": "SG Mockups",
+  "id": "./",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0d0f0e",
+  "theme_color": "#0d0f0e",
+  "orientation": "portrait-primary",
+  "description": "Seymore Green garment mockup maker",
+  "icons": [
+    {
+      "src": "./icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
