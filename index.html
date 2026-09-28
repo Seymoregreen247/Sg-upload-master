@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SG Mockup Maker V14 Fixed</title>
+<title>SG Mockup Maker V17 Scene Cutout + Zoom</title>
 <style>
 :root{--bg:#0d0f0e;--panel:#171a18;--line:#303631;--text:#f6f7f6;--muted:#aeb6b0;--green:#39d16f}
 *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,sans-serif}
@@ -18,7 +18,7 @@ button.primary{background:var(--green);color:#07120b;border:0}
 button:disabled{opacity:.45;cursor:not-allowed}
 small{color:var(--muted);line-height:1.4;display:block;margin-top:12px}
 .stage{padding:18px;overflow:auto}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(var(--cardMin,280px),1fr));gap:16px}
 .card{background:#fff;border-radius:12px;overflow:hidden;color:#111;box-shadow:0 4px 20px #0004}
 .card h3{margin:0;padding:10px 12px;background:#eef1ef;font-size:14px;text-transform:capitalize}
 .canvasWrap{position:relative;aspect-ratio:1/1;background:white}
@@ -51,6 +51,9 @@ canvas{width:100%;height:100%;display:block;touch-action:pan-y}
   <label style="margin-top:18px">2. Add scene background — optional</label>
   <input id="sceneBg" type="file" accept="image/png,image/webp,image/jpeg">
   <button id="clearSceneBg" type="button">Clear scene background</button>
+  <label>Workspace zoom <span class="value" id="zoomVal">100%</span></label>
+  <input id="workspaceZoom" type="range" min="100" max="240" value="100" step="10">
+  <small>Zoom enlarges the editing view only. It does not change the downloaded mockup or artwork placement.</small>
 
   <label style="display:flex;gap:10px;align-items:center;margin-top:18px">
     <input id="removeBg" type="checkbox" style="width:auto">
@@ -73,7 +76,7 @@ canvas{width:100%;height:100%;display:block;touch-action:pan-y}
   <button id="resetAll">Reset all garments</button>
   <button class="primary" id="downloadAll" disabled>Download all 6 PNGs</button>
   <small>
-    Default: artwork background stays exactly as uploaded. You can also upload an optional scene background behind the garment for extra pizzazz. Turn on Remove background only when you want it. White and Auto modes also clear enclosed matching background cavities (such as the inside of a Boston B). Protect black / dark artwork is on by default so dark design details are preserved. Adjust tolerance only if a border remains; Restore original artwork instantly returns to the untouched upload.
+    Default: artwork background stays exactly as uploaded. You can also upload an optional scene background behind the garment for extra pizzazz. When a scene is selected, the app automatically removes only the garment photo’s outer white box so the scene shows around the actual garment; white garments and internal white details are preserved. Turn on Remove background only when you want it. White and Auto modes also clear enclosed matching background cavities (such as the inside of a Boston B). Protect black / dark artwork is on by default so dark design details are preserved. Adjust tolerance only if a border remains; Restore original artwork instantly returns to the untouched upload.
     On each garment, tap the artwork to edit it, drag it into position, and use the green corner handle to resize it. Click/tap artwork, then use Arrow keys to nudge it (Shift+Arrow = larger step); press Enter to auto-center it. Each garment also has an Auto Center button. Then tap Lock. Locked artwork cannot move and the green outline disappears. Swipe outside unlocked artwork—or anywhere on a locked garment—to scroll. Each garment is independent. Downloads are automatically cropped and re-centered around the garment so there is no loose canvas space for the mockup to appear to slide.
   </small>
 </aside>
@@ -98,7 +101,7 @@ const exportCrop = {
  beanie:    [.16,.10,.84,.90]
 };
 
-let originalArt=null, art=null, sceneBackground=null, artName="design", masters={};
+let originalArt=null, art=null, sceneBackground=null, artName="design", masters={}, cutoutMasters={};
 let activeGarment=null;
 const state={};
 const grid=document.getElementById("grid");
@@ -118,7 +121,7 @@ for(const [name,g] of Object.entries(garments)){
  <div class="status" id="status-${name}">Unlocked — tap artwork to edit; swipe outside artwork to scroll.</div>`;
  grid.appendChild(card);
  const im=new Image();
- im.onload=()=>{masters[name]=im; draw(name)};
+ im.onload=()=>{masters[name]=im;cutoutMasters[name]=makeGarmentCutout(im);draw(name)};
  im.onerror=()=>{const s=document.getElementById("status-"+name);if(s)s.textContent="Garment image failed to load — refresh this page.";};
  im.src=g.img;
  const c=card.querySelector("canvas");
@@ -165,6 +168,24 @@ function rebuildArt(){
    removeEdgeBackground(originalArt,+document.getElementById("tolerance").value) : originalArt;
  redraw();
 }
+function makeGarmentCutout(img){
+ // Remove only near-white background connected to the OUTER EDGE.
+ // This preserves white garments and internal white details while removing the white box.
+ const c=document.createElement("canvas");c.width=img.naturalWidth||img.width;c.height=img.naturalHeight||img.height;
+ const ctx=c.getContext("2d",{willReadFrequently:true});ctx.drawImage(img,0,0,c.width,c.height);
+ const id=ctx.getImageData(0,0,c.width,c.height),p=id.data,w=c.width,h=c.height;
+ const seen=new Uint8Array(w*h), q=new Int32Array(w*h);let head=0,tail=0;
+ const nearWhite=(idx)=>{const i=idx*4;return p[i]>225&&p[i+1]>225&&p[i+2]>225&&p[i+3]>0};
+ const add=(idx)=>{if(idx<0||idx>=w*h||seen[idx]||!nearWhite(idx))return;seen[idx]=1;q[tail++]=idx};
+ for(let x=0;x<w;x++){add(x);add((h-1)*w+x)}
+ for(let y=0;y<h;y++){add(y*w);add(y*w+w-1)}
+ while(head<tail){const n=q[head++],x=n%w,y=(n/w)|0,i=n*4;
+   // Feather near-white edge pixels instead of a hard jagged cut.
+   const whiteness=Math.min(p[i],p[i+1],p[i+2]);p[i+3]=whiteness>247?0:Math.max(0,Math.round((247-whiteness)/22*255));
+   if(x>0)add(n-1);if(x<w-1)add(n+1);if(y>0)add(n-w);if(y<h-1)add(n+w);
+ }
+ ctx.putImageData(id,0,0);return c;
+}
 function initialRect(name,mw,mh,mx,my){
  const [cx,ty,bw,bh]=garments[name].box, as=art.width/art.height;
  let maxW=bw*mw,maxH=bh*mh;
@@ -173,7 +194,8 @@ function initialRect(name,mw,mh,mx,my){
  return {x:mx+cx*mw-w/2,y:my+ty*mh,w,h};
 }
 function draw(name){
- const m=masters[name],c=document.getElementById("c-"+name);if(!m||!c)return;
+ const raw=masters[name],c=document.getElementById("c-"+name);if(!raw||!c)return;
+ const m=(sceneBackground && cutoutMasters[name])?cutoutMasters[name]:raw;
  const ctx=c.getContext("2d");ctx.clearRect(0,0,2000,2000);ctx.fillStyle="white";ctx.fillRect(0,0,2000,2000);
  if(sceneBackground){const bs=Math.max(2000/sceneBackground.width,2000/sceneBackground.height),bw=sceneBackground.width*bs,bh=sceneBackground.height*bs;ctx.drawImage(sceneBackground,(2000-bw)/2,(2000-bh)/2,bw,bh);}
  const s=Math.min(1900/m.width,1900/m.height),mw=m.width*s,mh=m.height*s,mx=(2000-mw)/2,my=(2000-mh)/2;ctx.drawImage(m,mx,my,mw,mh);
@@ -247,6 +269,10 @@ document.getElementById("bgMode").onchange=()=>{if(removeBg.checked)rebuildArt()
 document.getElementById("tolerance").oninput=e=>{tolVal.textContent=e.target.value;if(removeBg.checked)rebuildArt()};
 document.getElementById("protectDark").onchange=()=>{if(removeBg.checked)rebuildArt()};
 document.getElementById("restoreArt").onclick=()=>{document.getElementById("removeBg").checked=false;art=originalArt;redraw()};
+document.getElementById("workspaceZoom").oninput=e=>{
+ const z=+e.target.value;document.getElementById("zoomVal").textContent=z+"%";
+ document.getElementById("grid").style.setProperty("--cardMin",Math.round(280*z/100)+"px");
+};
 document.getElementById("resetAll").onclick=()=>{Object.keys(state).forEach(k=>state[k]={x:null,y:null,w:null,h:null,selected:false,locked:false});Object.keys(state).forEach(updateLockUI);redraw()};
 function cleanDraw(name){
  const was=state[name].selected;state[name].selected=false;draw(name);state[name].selected=was;
