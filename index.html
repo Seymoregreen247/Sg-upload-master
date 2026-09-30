@@ -47,9 +47,10 @@ canvas{width:100%;height:100%;display:block;touch-action:pan-y}
 <aside>
   <label>1. Upload artwork — PNG, JPG, or WebP</label>
   <input id="upload" type="file" accept="image/png,image/webp,image/jpeg">
+  <div id="artStatus" style="display:none;margin-top:10px;padding:9px 10px;border:1px solid #303631;border-radius:8px;font-size:12px;line-height:1.35"></div>
 
   <label style="display:flex;gap:10px;align-items:center;margin-top:18px">
-    <input id="removeBg" type="checkbox" style="width:auto">
+    <input id="removeBg" type="checkbox" style="width:auto" autocomplete="off">
     Remove background
   </label>
   <label>Background remover mode</label>
@@ -89,7 +90,7 @@ const exportCrop = {
  beanie:    [.16,.10,.84,.90]
 };
 
-let originalArt=null, art=null, artName="design", masters={};
+let originalArt=null, art=null, artName="design", masters={}, artHasTransparency=false;
 const state={};
 const grid=document.getElementById("grid");
 
@@ -115,6 +116,19 @@ function makeArtSource(img){
  const c=document.createElement("canvas");c.width=img.naturalWidth||img.width;c.height=img.naturalHeight||img.height;
  c.getContext("2d").drawImage(img,0,0);return c;
 }
+function detectTransparency(source){
+ const ctx=source.getContext("2d",{willReadFrequently:true});
+ const p=ctx.getImageData(0,0,source.width,source.height).data;
+ // Any genuinely non-opaque pixel means the upload already carries transparency.
+ for(let i=3;i<p.length;i+=4){if(p[i]<250)return true}
+ return false;
+}
+function setArtStatus(message,ok=false){
+ const el=document.getElementById("artStatus");if(!el)return;
+ el.style.display="block";el.textContent=message;
+ el.style.color=ok?"#8df0ad":"#d5ddd7";
+ el.style.borderColor=ok?"#287a45":"#303631";
+}
 function removeEdgeBackground(source,tol){
  const c=document.createElement("canvas");c.width=source.width;c.height=source.height;
  const ctx=c.getContext("2d");ctx.drawImage(source,0,0);
@@ -136,8 +150,19 @@ function removeEdgeBackground(source,tol){
 }
 function rebuildArt(){
  if(!originalArt)return;
- art=document.getElementById("removeBg").checked ?
-   removeEdgeBackground(originalArt,+document.getElementById("tolerance").value) : originalArt;
+ const removeBg=document.getElementById("removeBg");
+ // Transparent artwork is already production-ready. Never run destructive cleanup on it.
+ if(artHasTransparency){
+   removeBg.checked=false;
+   art=originalArt;
+   setArtStatus("✓ Transparent artwork detected — background removal not needed.",true);
+ }else if(removeBg.checked){
+   art=removeEdgeBackground(originalArt,+document.getElementById("tolerance").value);
+   setArtStatus("Background removal ON — edge-connected background only.");
+ }else{
+   art=originalArt;
+   setArtStatus("Solid background detected — background removal available.");
+ }
  redraw();
 }
 function initialRect(name,mw,mh,mx,my){
@@ -206,11 +231,20 @@ document.getElementById("upload").onchange=e=>{
  const f=e.target.files[0];if(!f)return;artName=f.name.replace(/\.[^.]+$/,"");
  const im=new Image();im.onload=()=>{
    originalArt=makeArtSource(im);art=originalArt;
+   artHasTransparency=detectTransparency(originalArt);
+   // Background removal is opt-in on every new upload.
+   document.getElementById("removeBg").checked=false;
    Object.keys(state).forEach(k=>state[k]={x:null,y:null,w:null,h:null,selected:false,locked:false});
    rebuildArt();document.getElementById("downloadAll").disabled=false
  };im.src=URL.createObjectURL(f);
 };
-document.getElementById("removeBg").onchange=rebuildArt;
+document.getElementById("removeBg").onchange=e=>{
+ if(artHasTransparency && e.target.checked){
+   e.target.checked=false;
+   setArtStatus("✓ Transparent artwork detected — background removal not needed.",true);
+ }
+ rebuildArt();
+};
 document.getElementById("bgMode").onchange=()=>{if(removeBg.checked)rebuildArt()};
 document.getElementById("tolerance").oninput=e=>{tolVal.textContent=e.target.value;if(removeBg.checked)rebuildArt()};
 document.getElementById("resetAll").onclick=()=>{Object.keys(state).forEach(k=>state[k]={x:null,y:null,w:null,h:null,selected:false,locked:false});Object.keys(state).forEach(updateLockUI);redraw()};
