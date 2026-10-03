@@ -1,3 +1,7 @@
-SG Mockup Master V18 Colors
+SG Mockup Master V20 Colors
 Deploy this entire folder to Netlify.
 Includes black, white, gray, red tees; black/gray/white hoodies and gray hoodie back; black/white crew necks. Other garments remain available. Each card supports uploading another blank garment photo (for example blue). Uploaded custom photos last for this browser session. Downloads include the selected garment color. White/custom blank photos retain their backdrop when using scene backgrounds.
+
+White hoodie now uses the straight front-facing photo. Previous white hoodie is available as White — angled.
+
+Beanie: White (high resolution), White — classic, White — curved cuff. Original black remains. White beanie photos preserve their backdrop.
