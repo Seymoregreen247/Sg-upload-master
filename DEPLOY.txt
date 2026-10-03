@@ -1,5 +1,3 @@
-NETLIFY V14 FIXED
-Upload ALL 7 items in this folder together.
-The six garment images are embedded directly inside index.html, so they cannot disappear because of a missing assets folder.
-The only separate image is icon.png, used for the installable PWA icon.
-After deploying, if an older version appears, refresh the site once or close/reopen it so the old service-worker cache is replaced.
+SG Mockup Master V18 Colors
+Deploy this entire folder to Netlify.
+Includes black, white, gray, red tees; black/gray/white hoodies and gray hoodie back; black/white crew necks. Other garments remain available. Each card supports uploading another blank garment photo (for example blue). Uploaded custom photos last for this browser session. Downloads include the selected garment color. White/custom blank photos retain their backdrop when using scene backgrounds.
